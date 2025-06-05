@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Claim TPC Tokens</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; text-align: center; }
+    button { padding: 10px 20px; font-size: 16px; margin-top: 10px; }
+    input { padding: 10px; font-size: 16px; width: 200px; }
+    #status { margin-top: 20px; font-weight: bold; color: #333; }
+  </style>
+</head>
+<body>
+  <h1>Claim Your TPC Tokens</h1>
+  <p id="walletAddress">Wallet: Not connected</p>
+
+  <button onclick="connectWallet()">Connect Wallet</button><br><br>
+
+  <input type="number" id="coinAmount" placeholder="Enter Coins Earned"><br>
+  <button onclick="sendTPC()">Claim TPC Tokens</button>
+
+  <p id="status"></p>
+
+  <script>
+    const contractAddress = "0x1F160983712ab1F5e8e2Ab46f022e7C48e162305"; // Your TPC contract
+    const sepoliaChainId = "0xaa36a7"; // Sepolia chain ID in hex
+
+    // Only includes `transfer` for simplicity
+    const abi = [
+      "function transfer(address to, uint256 amount) public returns (bool)"
+    ];
+
+    let provider, signer, userAddress;
+
+    async function connectWallet() {
+      const status = document.getElementById("status");
+      if (!window.ethereum) {
+        alert("MetaMask not found. Please install it.");
+        return;
+      }
+
+      try {
+        await window.ethereum.request({ method: "eth_requestAccounts" });
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        signer = provider.getSigner();
+        const network = await provider.getNetwork();
+
+        if (network.chainId !== parseInt(sepoliaChainId, 16)) {
+          status.innerText = "❌ Please switch MetaMask to Sepolia Testnet";
+          return;
+        }
+
+        userAddress = await signer.getAddress();
+        document.getElementById("walletAddress").innerText = "Wallet: " + userAddress;
+        status.innerText = "✅ Wallet connected and on Sepolia";
+      } catch (err) {
+        status.innerText = "Connection failed: " + err.message;
+      }
+    }
+
+    async function sendTPC() {
+      const status = document.getElementById("status");
+
+      if (!signer) {
+        alert("Connect wallet first.");
+        return;
+      }
+
+      const coinInput = document.getElementById("coinAmount").value;
+      const tokensToSend = Math.floor(Number(coinInput) / 100);
+      if (tokensToSend <= 0) {
+        alert("You need at least 100 coins.");
+        return;
+      }
+
+      const contract = new ethers.Contract(contractAddress, abi, signer);
+      const decimals = 18; // Assuming TPC uses 18 decimals
+      const amount = ethers.utils.parseUnits(tokensToSend.toString(), decimals);
+
+      try {
+        status.innerText = "⏳ Sending " + tokensToSend + " TPC to your wallet...";
+        const tx = await contract.transfer(userAddress, amount);
+        await tx.wait();
+        status.innerText = `✅ Success! You received ${tokensToSend} TPC.`;
+      } catch (err) {
+        console.error(err);
+        status.innerText = "❌ Transfer failed: " + err.message;
+      }
+    }
+  </script>
+</body>
+</html>
