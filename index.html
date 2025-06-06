@@ -5,89 +5,190 @@
   <title>Claim TPC Tokens</title>
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <style>
-    body { font-family: sans-serif; padding: 20px; text-align: center; }
-    button { padding: 10px 20px; font-size: 16px; margin-top: 10px; }
-    input { padding: 10px; font-size: 16px; width: 200px; }
-    #status { margin-top: 20px; font-weight: bold; color: #333; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #1a2a6c, #b21f1f, #1a2a6c);
+      color: white;
+      padding: 20px;
+      text-align: center;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .container {
+      background: rgba(0, 0, 0, 0.7);
+      border-radius: 15px;
+      padding: 30px;
+      width: 90%;
+      max-width: 500px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      border: 1px solid #00ffc8;
+    }
+    
+    h1 {
+      color: #00ffc8;
+      font-size: 26px;
+      margin-bottom: 20px;
+      text-shadow: 0 0 10px rgba(0, 255, 200, 0.5);
+    }
+    
+    .info-box {
+      background: rgba(0, 30, 60, 0.6);
+      border-radius: 10px;
+      padding: 15px;
+      margin: 20px 0;
+      border-left: 3px solid #00ffc8;
+    }
+    
+    #walletAddress, #status {
+      font-size: 18px;
+      margin: 10px 0;
+    }
+    
+    #status {
+      color: #fffa72;
+      font-weight: bold;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .token-amount {
+      font-size: 48px;
+      font-weight: bold;
+      color: #00ffc8;
+      margin: 20px 0;
+      text-shadow: 0 0 15px rgba(0, 255, 200, 0.7);
+    }
+    
+    .loading {
+      display: inline-block;
+      width: 30px;
+      height: 30px;
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top: 4px solid #00ffc8;
+      animation: spin 1s linear infinite;
+      margin-right: 10px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .success-check {
+      color: #00ffc8;
+      font-size: 36px;
+      margin-right: 10px;
+    }
   </style>
 </head>
 <body>
-  <h1>Claim Your TPC Tokens</h1>
-  <p id="walletAddress">Wallet: Not connected</p>
-
-  <button onclick="connectWallet()">Connect Wallet</button><br><br>
-
-  <input type="number" id="coinAmount" placeholder="Enter Coins Earned"><br>
-  <button onclick="sendTPC()">Claim TPC Tokens</button>
-
-  <p id="status"></p>
+  <div class="container">
+    <h1>Claim Your TPC Tokens</h1>
+    
+    <div class="info-box">
+      <p id="walletAddress">Wallet: Not connected</p>
+    </div>
+    
+    <div class="token-amount" id="tokenAmount">0 TPC</div>
+    
+    <div id="status">Connecting to wallet...</div>
+  </div>
 
   <script>
-    const contractAddress = "0x1F160983712ab1F5e8e2Ab46f022e7C48e162305"; // Your TPC contract
-    const sepoliaChainId = "0xaa36a7"; // Sepolia chain ID in hex
-
-    // Only includes `transfer` for simplicity
-    const abi = [
-      "function transfer(address to, uint256 amount) public returns (bool)"
-    ];
+    const contractAddress = "0x1F160983712ab1F5e8e2Ab46f022e7C48e162305";
+    const sepoliaChainId = "0xaa36a7";
+    const abi = ["function transfer(address to, uint256 amount) public returns (bool)"];
 
     let provider, signer, userAddress;
+    let coins = 0, tokensToSend = 0;
 
-    async function connectWallet() {
-      const status = document.getElementById("status");
+    async function connectAndSendTokens() {
+      const statusEl = document.getElementById("status");
+      const walletEl = document.getElementById("walletAddress");
+      const tokenEl = document.getElementById("tokenAmount");
+
       if (!window.ethereum) {
-        alert("MetaMask not found. Please install it.");
+        statusEl.innerHTML = "❌ MetaMask not found. Please install it first.";
         return;
       }
 
       try {
+        // Get coins amount from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        coins = parseInt(urlParams.get('amount'));
+        
+        if (!coins || isNaN(coins)) {
+          statusEl.innerHTML = "❌ Invalid or missing 'amount' parameter in URL.";
+          return;
+        }
+
+        tokensToSend = Math.floor(coins / 100);
+        tokenEl.textContent = `${tokensToSend} TPC`;
+        
+        if (tokensToSend <= 0) {
+          statusEl.innerHTML = "❌ You need at least 100 coins to get 1 TPC.";
+          return;
+        }
+
+        // Connect to MetaMask
+        statusEl.innerHTML = `<div class="loading"></div> Connecting to wallet...`;
+        
         await window.ethereum.request({ method: "eth_requestAccounts" });
         provider = new ethers.providers.Web3Provider(window.ethereum);
         signer = provider.getSigner();
         const network = await provider.getNetwork();
 
+        // Verify Sepolia network
         if (network.chainId !== parseInt(sepoliaChainId, 16)) {
-          status.innerText = "❌ Please switch MetaMask to Sepolia Testnet";
+          statusEl.innerHTML = "❌ Please switch to Sepolia Testnet in MetaMask";
           return;
         }
 
+        // Get wallet address
         userAddress = await signer.getAddress();
-        document.getElementById("walletAddress").innerText = "Wallet: " + userAddress;
-        status.innerText = "✅ Wallet connected and on Sepolia";
-      } catch (err) {
-        status.innerText = "Connection failed: " + err.message;
-      }
-    }
-
-    async function sendTPC() {
-      const status = document.getElementById("status");
-
-      if (!signer) {
-        alert("Connect wallet first.");
-        return;
-      }
-
-      const coinInput = document.getElementById("coinAmount").value;
-      const tokensToSend = Math.floor(Number(coinInput) / 100);
-      if (tokensToSend <= 0) {
-        alert("You need at least 100 coins.");
-        return;
-      }
-
-      const contract = new ethers.Contract(contractAddress, abi, signer);
-      const decimals = 18; // Assuming TPC uses 18 decimals
-      const amount = ethers.utils.parseUnits(tokensToSend.toString(), decimals);
-
-      try {
-        status.innerText = "⏳ Sending " + tokensToSend + " TPC to your wallet...";
-        const tx = await contract.transfer(userAddress, amount);
+        walletEl.textContent = `Wallet: ${userAddress.substring(0, 6)}...${userAddress.substring(38)}`;
+        
+        // Prepare token transfer
+        statusEl.innerHTML = `<div class="loading"></div> Preparing transfer...`;
+        
+        const tokenContract = new ethers.Contract(contractAddress, abi, signer);
+        const tokenAmount = ethers.utils.parseUnits(tokensToSend.toString(), 18);
+        
+        // Send transaction
+        statusEl.innerHTML = `<div class="loading"></div> Sending ${tokensToSend} TPC...`;
+        
+        const tx = await tokenContract.transfer(userAddress, tokenAmount);
+        
+        statusEl.innerHTML = `<div class="loading"></div> Waiting for confirmation...`;
         await tx.wait();
-        status.innerText = `✅ Success! You received ${tokensToSend} TPC.`;
+        
+        // Success message
+        statusEl.innerHTML = `<span class="success-check">✓</span> Success! ${tokensToSend} TPC sent to your wallet`;
+        
+        // Add transaction link
+        const txLink = document.createElement("a");
+        txLink.href = `https://sepolia.etherscan.io/tx/${tx.hash}`;
+        txLink.target = "_blank";
+        txLink.textContent = "View on Etherscan";
+        txLink.style.color = "#00ffc8";
+        txLink.style.marginTop = "15px";
+        txLink.style.display = "block";
+        statusEl.appendChild(txLink);
+        
       } catch (err) {
-        console.error(err);
-        status.innerText = "❌ Transfer failed: " + err.message;
+        console.error("Error:", err);
+        statusEl.innerHTML = `❌ Error: ${err.message || err}`;
       }
     }
+
+    window.addEventListener('load', connectAndSendTokens);
   </script>
 </body>
 </html>
