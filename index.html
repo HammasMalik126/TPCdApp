@@ -2,8 +2,12 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Claim TPC Tokens</title>
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@metamask/sdk@3.0.0/dist/metamask-sdk.min.js"></script>
   <style>
     body {
       font-family: 'Segoe UI', sans-serif;
@@ -53,6 +57,7 @@
       font-weight: bold;
       min-height: 60px;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
     }
@@ -86,6 +91,37 @@
       font-size: 36px;
       margin-right: 10px;
     }
+    
+    #installButton {
+      background: linear-gradient(to right, #00c9ff, #92fe9d);
+      border: none;
+      border-radius: 25px;
+      color: #1a2a6c;
+      padding: 12px 24px;
+      font-weight: bold;
+      font-size: 16px;
+      margin-top: 20px;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+      transition: all 0.3s ease;
+    }
+    
+    #installButton:hover {
+      transform: scale(1.05);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+    }
+    
+    .tx-link {
+      color: #00ffc8;
+      margin-top: 15px;
+      display: block;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    
+    .tx-link:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -98,31 +134,24 @@
     
     <div class="token-amount" id="tokenAmount">0 TPC</div>
     
-    <div id="status">Connecting to wallet...</div>
+    <div id="status">Initializing...</div>
   </div>
 
   <script>
     const contractAddress = "0x1F160983712ab1F5e8e2Ab46f022e7C48e162305";
-    const sepoliaChainId = "0xaa36a7";
     const abi = ["function transfer(address to, uint256 amount) public returns (bool)"];
-
-    let provider, signer, userAddress;
-    let coins = 0, tokensToSend = 0;
+    let tokensToSend = 0;
+    let userAddress = "";
 
     async function connectAndSendTokens() {
       const statusEl = document.getElementById("status");
       const walletEl = document.getElementById("walletAddress");
       const tokenEl = document.getElementById("tokenAmount");
 
-      if (!window.ethereum) {
-        statusEl.innerHTML = "❌ MetaMask not found. Please install it first.";
-        return;
-      }
-
       try {
         // Get coins amount from URL
         const urlParams = new URLSearchParams(window.location.search);
-        coins = parseInt(urlParams.get('amount'));
+        const coins = parseInt(urlParams.get('amount'));
         
         if (!coins || isNaN(coins)) {
           statusEl.innerHTML = "❌ Invalid or missing 'amount' parameter in URL.";
@@ -137,58 +166,87 @@
           return;
         }
 
-        // Connect to MetaMask
+        // Initialize MetaMask SDK
         statusEl.innerHTML = `<div class="loading"></div> Connecting to wallet...`;
         
-        await window.ethereum.request({ method: "eth_requestAccounts" });
-        provider = new ethers.providers.Web3Provider(window.ethereum);
-        signer = provider.getSigner();
-        const network = await provider.getNetwork();
-
-        // Verify Sepolia network
-        if (network.chainId !== parseInt(sepoliaChainId, 16)) {
-          statusEl.innerHTML = "❌ Please switch to Sepolia Testnet in MetaMask";
-          return;
-        }
-
-        // Get wallet address
-        userAddress = await signer.getAddress();
-        walletEl.textContent = `Wallet: ${userAddress.substring(0, 6)}...${userAddress.substring(38)}`;
+        const MMSDK = new MetaMaskSDK({
+          dappMetadata: {
+            name: "TPC Token Claim",
+            url: window.location.href
+          }
+        });
         
-        // Prepare token transfer
-        statusEl.innerHTML = `<div class="loading"></div> Preparing transfer...`;
+        const ethereum = MMSDK.getProvider();
         
-        const tokenContract = new ethers.Contract(contractAddress, abi, signer);
-        const tokenAmount = ethers.utils.parseUnits(tokensToSend.toString(), 18);
+        // Connect to MetaMask
+        const accounts = await ethereum.request({ 
+          method: "eth_requestAccounts",
+          params: [{ chainId: "0xaa36a7" }] // Sepolia chain
+        });
         
-        // Send transaction
+        userAddress = accounts[0];
+        walletEl.textContent = `Wallet: ${userAddress.substring(0, 6)}...${userAddress.slice(-4)}`;
+        
+        // Send tokens directly
         statusEl.innerHTML = `<div class="loading"></div> Sending ${tokensToSend} TPC...`;
         
+        const tokenContract = new ethers.Contract(
+          contractAddress, 
+          abi, 
+          new ethers.providers.Web3Provider(ethereum).getSigner()
+        );
+        
+        const tokenAmount = ethers.utils.parseUnits(tokensToSend.toString(), 18);
+        
+        // Transfer tokens directly to player's wallet
         const tx = await tokenContract.transfer(userAddress, tokenAmount);
         
-        statusEl.innerHTML = `<div class="loading"></div> Waiting for confirmation...`;
-        await tx.wait();
+        statusEl.innerHTML = `<div class="loading"></div> Confirming transaction...`;
+        await tx.wait(1); // Wait for 1 confirmation
         
         // Success message
-        statusEl.innerHTML = `<span class="success-check">✓</span> Success! ${tokensToSend} TPC sent to your wallet`;
-        
-        // Add transaction link
-        const txLink = document.createElement("a");
-        txLink.href = `https://sepolia.etherscan.io/tx/${tx.hash}`;
-        txLink.target = "_blank";
-        txLink.textContent = "View on Etherscan";
-        txLink.style.color = "#00ffc8";
-        txLink.style.marginTop = "15px";
-        txLink.style.display = "block";
-        statusEl.appendChild(txLink);
+        statusEl.innerHTML = `
+          <div style="display:flex; align-items:center;">
+            <span class="success-check">✓</span>
+            <div>
+              Success! ${tokensToSend} TPC sent to your wallet<br>
+              <a href="https://sepolia.etherscan.io/tx/${tx.hash}" 
+                 target="_blank" 
+                 class="tx-link">
+                View on Etherscan
+              </a>
+            </div>
+          </div>
+        `;
         
       } catch (err) {
-        console.error("Error:", err);
-        statusEl.innerHTML = `❌ Error: ${err.message || err}`;
+        console.error("Token transfer error:", err);
+        
+        // Handle specific errors
+        if (err.code === 4001) {
+          statusEl.innerHTML = "❌ Transaction rejected by user";
+        } else if (err.message.includes("user rejected signing")) {
+          statusEl.innerHTML = "❌ You rejected the transaction";
+        } else if (err.message.includes("chain")) {
+          statusEl.innerHTML = "❌ Please switch to Sepolia Testnet in MetaMask";
+        } else if (err.message.includes("MetaMask not installed")) {
+          statusEl.innerHTML = `
+            ❌ MetaMask not installed
+            <button id="installButton">Install MetaMask</button>
+          `;
+          document.getElementById("installButton").onclick = () => {
+            window.open("https://metamask.io/download/", "_blank");
+          };
+        } else {
+          statusEl.innerHTML = `❌ Error: ${err.message || "Unknown error"}`;
+        }
       }
     }
 
-    window.addEventListener('load', connectAndSendTokens);
+    window.addEventListener('load', () => {
+      // Add slight delay to ensure everything is loaded
+      setTimeout(connectAndSendTokens, 500);
+    });
   </script>
 </body>
 </html>
