@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Claim TPC Tokens</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -29,7 +30,7 @@
       font-size: 24px;
       margin: 20px 0;
     }
-    .open-button {
+    .action-button {
       background: #00ffc8;
       color: #1a2a6c;
       border: none;
@@ -37,12 +38,12 @@
       font-size: 20px;
       font-weight: bold;
       border-radius: 30px;
-      margin: 25px 0;
+      margin: 15px 5px;
       cursor: pointer;
       box-shadow: 0 4px 15px rgba(0,0,0,0.2);
       display: inline-block;
     }
-    .open-button:hover {
+    .action-button:hover {
       transform: scale(1.05);
       background: #00e6b8;
     }
@@ -50,10 +51,10 @@
       margin-top: 30px;
       font-size: 16px;
       color: #ccc;
+      text-align: left;
     }
     .step {
       margin: 10px 0;
-      text-align: left;
       padding-left: 20px;
       position: relative;
     }
@@ -62,6 +63,32 @@
       position: absolute;
       left: 0;
       color: #00ffc8;
+    }
+    #status {
+      margin-top: 20px;
+      font-size: 18px;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .loading {
+      display: inline-block;
+      width: 30px;
+      height: 30px;
+      border: 4px solid rgba(255,255,255,0.3);
+      border-top: 4px solid #00ffc8;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 10px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .success {
+      color: #00ffc8;
+      font-weight: bold;
     }
   </style>
 </head>
@@ -75,34 +102,40 @@
       Claim: <span id="tokensAmount">0</span> TPC tokens
     </div>
     
-    <button id="openMetaMask" class="open-button">
-      Open in MetaMask
+    <button id="connectButton" class="action-button">
+      Connect Wallet
+    </button>
+    <button id="sendButton" class="action-button" style="display:none; background:#ff9800;">
+      Send Tokens
     </button>
     
     <div class="instructions">
-      <p>If MetaMask doesn't open automatically:</p>
-      <div class="step">1. Copy this contract address: 
+      <p>If you have issues:</p>
+      <div class="step">1. Copy contract address: 
         <span id="contractAddress">0x1F160...62305</span>
-        <button id="copyButton">Copy</button>
+        <button id="copyButton" class="action-button" style="padding:5px 10px;font-size:14px;margin-left:10px;">Copy</button>
       </div>
       <div class="step">2. Open MetaMask manually</div>
-      <div class="step">3. Paste address and confirm</div>
+      <div class="step">3. Paste address and send tokens</div>
     </div>
     
-    <div id="status" style="margin-top: 20px;"></div>
+    <div id="status"></div>
   </div>
 
   <script>
     // Your contract address
     const contractAddress = "0x1F160983712ab1F5e8e2Ab46f022e7C48e162305";
+    const abi = ["function mintTokens(address to, uint256 amount) public"];
     let tokensToSend = 0;
+    let userAddress = null;
     
     document.addEventListener('DOMContentLoaded', () => {
       const urlParams = new URLSearchParams(window.location.search);
       const coins = parseInt(urlParams.get('amount') || '0');
       const coinsEl = document.getElementById('coinsAmount');
       const tokensEl = document.getElementById('tokensAmount');
-      const openButton = document.getElementById('openMetaMask');
+      const connectButton = document.getElementById('connectButton');
+      const sendButton = document.getElementById('sendButton');
       const copyButton = document.getElementById('copyButton');
       const contractEl = document.getElementById('contractAddress');
       const statusEl = document.getElementById('status');
@@ -117,38 +150,80 @@
       copyButton.addEventListener('click', () => {
         navigator.clipboard.writeText(contractAddress)
           .then(() => {
-            statusEl.textContent = "Address copied to clipboard!";
-            statusEl.style.color = "#00ffc8";
+            statusEl.innerHTML = "<span class='success'>✓ Address copied to clipboard!</span>";
           })
           .catch(err => {
-            statusEl.textContent = "Failed to copy: " + err;
-            statusEl.style.color = "#ff5555";
+            statusEl.innerHTML = "Failed to copy: " + err;
           });
       });
       
-      // Open in MetaMask function
-      openButton.addEventListener('click', () => {
-        if (tokensToSend <= 0) {
-          statusEl.textContent = "You need at least 100 coins to claim tokens";
-          statusEl.style.color = "#ff5555";
+      // Connect to wallet
+      connectButton.addEventListener('click', async () => {
+        if (!window.ethereum) {
+          statusEl.innerHTML = "MetaMask not installed!";
           return;
         }
         
-        // Convert tokens to wei (18 decimals)
-        const tokenAmountWei = (tokensToSend * 10 ** 18).toString();
+        statusEl.innerHTML = "<span class='loading'></span> Connecting...";
         
-        // Create MetaMask deep link
-        const deeplink = `https://metamask.app.link/send/${contractAddress}@11155111/transfer?address=${contractAddress}&uint256=${tokenAmountWei}`;
+        try {
+          const accounts = await window.ethereum.request({ 
+            method: "eth_requestAccounts" 
+          });
+          
+          userAddress = accounts[0];
+          statusEl.innerHTML = `<span class='success'>✓ Connected! Wallet: ${userAddress.substring(0, 6)}...${userAddress.slice(-4)}</span>`;
+          
+          // Show send button
+          connectButton.style.display = "none";
+          sendButton.style.display = "inline-block";
+          
+        } catch (err) {
+          console.error(err);
+          statusEl.innerHTML = `Connection failed: ${err.message}`;
+        }
+      });
+      
+      // Send tokens
+      sendButton.addEventListener('click', async () => {
+        if (!userAddress || tokensToSend <= 0) return;
         
-        // Try to open MetaMask
-        window.location.href = deeplink;
+        statusEl.innerHTML = "<span class='loading'></span> Sending tokens...";
         
-        // Fallback instruction
-        statusEl.innerHTML = `
-          If MetaMask didn't open:<br>
-          1. Make sure MetaMask is installed<br>
-          2. <a href="${deeplink}" style="color:#00ffc8;">Click here to try again</a>
-        `;
+        try {
+          // Create provider and signer
+          const provider = new ethers.providers.Web3Provider(window.ethereum);
+          const signer = provider.getSigner();
+          
+          // Create contract instance
+          const tokenContract = new ethers.Contract(contractAddress, abi, signer);
+          
+          // Convert tokens to wei (18 decimals)
+          const tokenAmount = ethers.utils.parseUnits(tokensToSend.toString(), 18);
+          
+          // Send transaction
+          const tx = await tokenContract.mintTokens(userAddress, tokenAmount);
+          
+          statusEl.innerHTML = "<span class='loading'></span> Waiting for confirmation...";
+          
+          // Wait for transaction to be mined
+          await tx.wait();
+          
+          statusEl.innerHTML = `
+            <div class="success">
+              ✓ ${tokensToSend} TPC tokens sent to your wallet!<br>
+              <a href="https://sepolia.etherscan.io/tx/${tx.hash}" 
+                 target="_blank" 
+                 style="color:#00ffc8;margin-top:10px;display:block;">
+                View on Etherscan
+              </a>
+            </div>
+          `;
+          
+        } catch (err) {
+          console.error(err);
+          statusEl.innerHTML = `Error: ${err.message || "Transaction failed"}`;
+        }
       });
     });
   </script>
