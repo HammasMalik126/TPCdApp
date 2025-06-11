@@ -2,20 +2,19 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>TPC Token Claim</title>
-  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@metamask/onboarding@1.0.1/dist/metamask-onboarding.bundle.js"></script>
+  <title>Claim TPC Tokens</title>
   <style>
-    body { 
-      font-family: Arial, sans-serif; 
-      text-align: center; 
-      padding: 20px; 
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
       background: linear-gradient(135deg, #1a2a6c, #b21f1f);
       color: white;
       min-height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
+      margin: 0;
     }
     .container {
       background: rgba(0,0,0,0.7);
@@ -26,161 +25,131 @@
       box-shadow: 0 5px 25px rgba(0,0,0,0.5);
       border: 2px solid #00ffc8;
     }
-    .loading {
-      display: inline-block;
-      width: 30px;
-      height: 30px;
-      border: 4px solid rgba(255,255,255,0.3);
-      border-top: 4px solid #00ffc8;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-right: 10px;
+    .token-info {
+      font-size: 24px;
+      margin: 20px 0;
     }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    button {
+    .open-button {
       background: #00ffc8;
       color: #1a2a6c;
       border: none;
-      padding: 12px 25px;
-      font-size: 18px;
+      padding: 15px 30px;
+      font-size: 20px;
       font-weight: bold;
       border-radius: 30px;
-      margin: 15px 0;
+      margin: 25px 0;
       cursor: pointer;
       box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+      display: inline-block;
     }
-    a {
+    .open-button:hover {
+      transform: scale(1.05);
+      background: #00e6b8;
+    }
+    .instructions {
+      margin-top: 30px;
+      font-size: 16px;
+      color: #ccc;
+    }
+    .step {
+      margin: 10px 0;
+      text-align: left;
+      padding-left: 20px;
+      position: relative;
+    }
+    .step:before {
+      content: "•";
+      position: absolute;
+      left: 0;
       color: #00ffc8;
-      text-decoration: none;
-      font-weight: bold;
-      margin-top: 15px;
-      display: block;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h2>Claim Your TPC Tokens</h2>
-    <p id="tokenAmount">Calculating tokens...</p>
-    <p id="walletInfo">Wallet: Not connected</p>
-    <div id="status">Initializing...</div>
-    <button id="connectButton" style="display:none;">Connect MetaMask</button>
+    <div class="token-info">
+      You earned: <span id="coinsAmount">0</span> coins
+    </div>
+    <div class="token-info">
+      Claim: <span id="tokensAmount">0</span> TPC tokens
+    </div>
+    
+    <button id="openMetaMask" class="open-button">
+      Open in MetaMask
+    </button>
+    
+    <div class="instructions">
+      <p>If MetaMask doesn't open automatically:</p>
+      <div class="step">1. Copy this contract address: 
+        <span id="contractAddress">0x1F160...62305</span>
+        <button id="copyButton">Copy</button>
+      </div>
+      <div class="step">2. Open MetaMask manually</div>
+      <div class="step">3. Paste address and confirm</div>
+    </div>
+    
+    <div id="status" style="margin-top: 20px;"></div>
   </div>
 
   <script>
-    // REPLACE WITH YOUR CONTRACT ADDRESS
+    // Your contract address
     const contractAddress = "0x1F160983712ab1F5e8e2Ab46f022e7C48e162305";
-    const abi = ["function mintTokens(address to, uint256 amount) public"];
-    let onboarding;
+    let tokensToSend = 0;
     
-    function initMetaMask() {
-      onboarding = new MetaMaskOnboarding();
-      const connectButton = document.getElementById('connectButton');
+    document.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const coins = parseInt(urlParams.get('amount') || '0');
+      const coinsEl = document.getElementById('coinsAmount');
+      const tokensEl = document.getElementById('tokensAmount');
+      const openButton = document.getElementById('openMetaMask');
+      const copyButton = document.getElementById('copyButton');
+      const contractEl = document.getElementById('contractAddress');
+      const statusEl = document.getElementById('status');
       
-      // Show connect button if MetaMask not installed
-      if (!MetaMaskOnboarding.isMetaMaskInstalled()) {
-        document.getElementById('status').textContent = "MetaMask not detected";
-        connectButton.style.display = "block";
-        connectButton.addEventListener('click', () => onboarding.startOnboarding());
-        return false;
-      }
+      // Display values
+      coinsEl.textContent = coins;
+      tokensToSend = Math.floor(coins / 100);
+      tokensEl.textContent = tokensToSend;
+      contractEl.textContent = `${contractAddress.substring(0, 6)}...${contractAddress.substring(contractAddress.length-5)}`;
       
-      return true;
-    }
-
-    async function claimTokens() {
-      const statusEl = document.getElementById("status");
-      const walletEl = document.getElementById("walletInfo");
-      const tokenEl = document.getElementById("tokenAmount");
-      const connectButton = document.getElementById('connectButton');
+      // Copy to clipboard function
+      copyButton.addEventListener('click', () => {
+        navigator.clipboard.writeText(contractAddress)
+          .then(() => {
+            statusEl.textContent = "Address copied to clipboard!";
+            statusEl.style.color = "#00ffc8";
+          })
+          .catch(err => {
+            statusEl.textContent = "Failed to copy: " + err;
+            statusEl.style.color = "#ff5555";
+          });
+      });
       
-      try {
-        // Get coins amount from URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const coins = parseInt(urlParams.get('amount'));
-        
-        if (!coins || isNaN(coins)) {
-          statusEl.innerHTML = "Invalid coin amount";
-          return;
-        }
-        
-        const tokensToSend = Math.floor(coins / 100);
-        tokenEl.textContent = `Claiming ${tokensToSend} TPC tokens`;
-        
+      // Open in MetaMask function
+      openButton.addEventListener('click', () => {
         if (tokensToSend <= 0) {
-          statusEl.innerHTML = "Need at least 100 coins";
+          statusEl.textContent = "You need at least 100 coins to claim tokens";
+          statusEl.style.color = "#ff5555";
           return;
         }
         
-        // Connect to MetaMask
-        statusEl.innerHTML = '<span class="loading"></span> Connecting wallet...';
+        // Convert tokens to wei (18 decimals)
+        const tokenAmountWei = (tokensToSend * 10 ** 18).toString();
         
-        const accounts = await window.ethereum.request({ 
-          method: "eth_requestAccounts" 
-        });
+        // Create MetaMask deep link
+        const deeplink = `https://metamask.app.link/send/${contractAddress}@11155111/transfer?address=${contractAddress}&uint256=${tokenAmountWei}`;
         
-        const userAddress = accounts[0];
-        walletEl.textContent = `Wallet: ${userAddress.substring(0, 6)}...${userAddress.slice(-4)}`;
+        // Try to open MetaMask
+        window.location.href = deeplink;
         
-        // Mint tokens directly
-        statusEl.innerHTML = '<span class="loading"></span> Minting tokens...';
-        
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        const signer = provider.getSigner();
-        const tokenContract = new ethers.Contract(contractAddress, abi, signer);
-        
-        const tokenAmount = ethers.utils.parseUnits(tokensToSend.toString(), 18);
-        const tx = await tokenContract.mintTokens(userAddress, tokenAmount);
-        
-        statusEl.innerHTML = '<span class="loading"></span> Confirming...';
-        await tx.wait();
-        
+        // Fallback instruction
         statusEl.innerHTML = `
-          <div style="color:#00ffc8;margin:15px;font-size:18px">
-            ✓ Success! ${tokensToSend} TPC sent to your wallet
-          </div>
-          <a href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank">
-            View transaction on Etherscan
-          </a>
+          If MetaMask didn't open:<br>
+          1. Make sure MetaMask is installed<br>
+          2. <a href="${deeplink}" style="color:#00ffc8;">Click here to try again</a>
         `;
-        
-      } catch (err) {
-        console.error(err);
-        
-        // Handle user rejection
-        if (err.code === 4001) {
-          statusEl.innerHTML = "Transaction rejected by user";
-          connectButton.style.display = "block";
-        } 
-        // Handle wrong network
-        else if (err.code === 4902 || err.message.includes("chain")) {
-          statusEl.innerHTML = "Please switch to Sepolia Testnet";
-          try {
-            await window.ethereum.request({
-              method: 'wallet_switchEthereumChain',
-              params: [{ chainId: '0xaa36a7' }] // Sepolia
-            });
-            // Retry after switching
-            setTimeout(claimTokens, 1000);
-          } catch (switchError) {
-            statusEl.innerHTML = "Failed to switch to Sepolia";
-          }
-        }
-        else {
-          statusEl.innerHTML = `Error: ${err.message || "Something went wrong"}`;
-        }
-      }
-    }
-
-    // Initialize
-    window.addEventListener('load', () => {
-      if (initMetaMask()) {
-        // Add delay to allow MetaMask to initialize
-        setTimeout(claimTokens, 1000);
-      }
+      });
     });
   </script>
 </body>
