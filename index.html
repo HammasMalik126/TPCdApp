@@ -4,33 +4,60 @@
   <meta charset="UTF-8">
   <title>TPC Token Claim</title>
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@metamask/onboarding@1.0.1/dist/metamask-onboarding.bundle.js"></script>
   <style>
     body { 
       font-family: Arial, sans-serif; 
       text-align: center; 
       padding: 20px; 
-      background: #f0f0f0;
+      background: linear-gradient(135deg, #1a2a6c, #b21f1f);
+      color: white;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
     .container {
-      background: white;
-      border-radius: 10px;
-      padding: 20px;
+      background: rgba(0,0,0,0.7);
+      border-radius: 15px;
+      padding: 30px;
       max-width: 500px;
-      margin: 50px auto;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      margin: 20px;
+      box-shadow: 0 5px 25px rgba(0,0,0,0.5);
+      border: 2px solid #00ffc8;
     }
     .loading {
       display: inline-block;
-      width: 20px;
-      height: 20px;
-      border: 3px solid #ddd;
-      border-top: 3px solid #007bff;
+      width: 30px;
+      height: 30px;
+      border: 4px solid rgba(255,255,255,0.3);
+      border-top: 4px solid #00ffc8;
       border-radius: 50%;
       animation: spin 1s linear infinite;
+      margin-right: 10px;
     }
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
+    }
+    button {
+      background: #00ffc8;
+      color: #1a2a6c;
+      border: none;
+      padding: 12px 25px;
+      font-size: 18px;
+      font-weight: bold;
+      border-radius: 30px;
+      margin: 15px 0;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    a {
+      color: #00ffc8;
+      text-decoration: none;
+      font-weight: bold;
+      margin-top: 15px;
+      display: block;
     }
   </style>
 </head>
@@ -39,18 +66,36 @@
     <h2>Claim Your TPC Tokens</h2>
     <p id="tokenAmount">Calculating tokens...</p>
     <p id="walletInfo">Wallet: Not connected</p>
-    <div id="status">Starting...</div>
+    <div id="status">Initializing...</div>
+    <button id="connectButton" style="display:none;">Connect MetaMask</button>
   </div>
 
   <script>
-    // REPLACE WITH YOUR NEW CONTRACT ADDRESS
-    const contractAddress = "0xbC57ffA42Fa1F87C3B3F8319666A142f069C5011";
+    // REPLACE WITH YOUR CONTRACT ADDRESS
+    const contractAddress = "0x1F160983712ab1F5e8e2Ab46f022e7C48e162305";
     const abi = ["function mintTokens(address to, uint256 amount) public"];
+    let onboarding;
     
+    function initMetaMask() {
+      onboarding = new MetaMaskOnboarding();
+      const connectButton = document.getElementById('connectButton');
+      
+      // Show connect button if MetaMask not installed
+      if (!MetaMaskOnboarding.isMetaMaskInstalled()) {
+        document.getElementById('status').textContent = "MetaMask not detected";
+        connectButton.style.display = "block";
+        connectButton.addEventListener('click', () => onboarding.startOnboarding());
+        return false;
+      }
+      
+      return true;
+    }
+
     async function claimTokens() {
       const statusEl = document.getElementById("status");
       const walletEl = document.getElementById("walletInfo");
       const tokenEl = document.getElementById("tokenAmount");
+      const connectButton = document.getElementById('connectButton');
       
       try {
         // Get coins amount from URL
@@ -71,22 +116,17 @@
         }
         
         // Connect to MetaMask
-        statusEl.innerHTML = '<div class="loading"></div> Connecting wallet...';
-        
-        if (!window.ethereum) {
-          statusEl.innerHTML = "Install MetaMask first";
-          return;
-        }
+        statusEl.innerHTML = '<span class="loading"></span> Connecting wallet...';
         
         const accounts = await window.ethereum.request({ 
           method: "eth_requestAccounts" 
         });
         
         const userAddress = accounts[0];
-        walletEl.textContent = `Wallet: ${userAddress.substring(0, 6)}...`;
+        walletEl.textContent = `Wallet: ${userAddress.substring(0, 6)}...${userAddress.slice(-4)}`;
         
         // Mint tokens directly
-        statusEl.innerHTML = '<div class="loading"></div> Minting tokens...';
+        statusEl.innerHTML = '<span class="loading"></span> Minting tokens...';
         
         const provider = new ethers.providers.Web3Provider(window.ethereum);
         const signer = provider.getSigner();
@@ -95,26 +135,53 @@
         const tokenAmount = ethers.utils.parseUnits(tokensToSend.toString(), 18);
         const tx = await tokenContract.mintTokens(userAddress, tokenAmount);
         
-        statusEl.innerHTML = '<div class="loading"></div> Confirming...';
+        statusEl.innerHTML = '<span class="loading"></span> Confirming...';
         await tx.wait();
         
         statusEl.innerHTML = `
-          <div style="color:green;margin:15px">
+          <div style="color:#00ffc8;margin:15px;font-size:18px">
             ✓ Success! ${tokensToSend} TPC sent to your wallet
           </div>
           <a href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank">
-            View transaction
+            View transaction on Etherscan
           </a>
         `;
         
       } catch (err) {
         console.error(err);
-        statusEl.innerHTML = `Error: ${err.message || "Something went wrong"}`;
+        
+        // Handle user rejection
+        if (err.code === 4001) {
+          statusEl.innerHTML = "Transaction rejected by user";
+          connectButton.style.display = "block";
+        } 
+        // Handle wrong network
+        else if (err.code === 4902 || err.message.includes("chain")) {
+          statusEl.innerHTML = "Please switch to Sepolia Testnet";
+          try {
+            await window.ethereum.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: '0xaa36a7' }] // Sepolia
+            });
+            // Retry after switching
+            setTimeout(claimTokens, 1000);
+          } catch (switchError) {
+            statusEl.innerHTML = "Failed to switch to Sepolia";
+          }
+        }
+        else {
+          statusEl.innerHTML = `Error: ${err.message || "Something went wrong"}`;
+        }
       }
     }
 
-    // Start the claim process
-    window.addEventListener('load', claimTokens);
+    // Initialize
+    window.addEventListener('load', () => {
+      if (initMetaMask()) {
+        // Add delay to allow MetaMask to initialize
+        setTimeout(claimTokens, 1000);
+      }
+    });
   </script>
 </body>
 </html>
