@@ -2,251 +2,119 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
-  <title>Claim TPC Tokens</title>
+  <title>TPC Token Claim</title>
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@metamask/sdk@3.0.0/dist/metamask-sdk.min.js"></script>
   <style>
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      background: linear-gradient(135deg, #1a2a6c, #b21f1f, #1a2a6c);
-      color: white;
-      padding: 20px;
-      text-align: center;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
+    body { 
+      font-family: Arial, sans-serif; 
+      text-align: center; 
+      padding: 20px; 
+      background: #f0f0f0;
     }
-    
     .container {
-      background: rgba(0, 0, 0, 0.7);
-      border-radius: 15px;
-      padding: 30px;
-      width: 90%;
-      max-width: 500px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-      border: 1px solid #00ffc8;
-    }
-    
-    h1 {
-      color: #00ffc8;
-      font-size: 26px;
-      margin-bottom: 20px;
-      text-shadow: 0 0 10px rgba(0, 255, 200, 0.5);
-    }
-    
-    .info-box {
-      background: rgba(0, 30, 60, 0.6);
+      background: white;
       border-radius: 10px;
-      padding: 15px;
-      margin: 20px 0;
-      border-left: 3px solid #00ffc8;
+      padding: 20px;
+      max-width: 500px;
+      margin: 50px auto;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
-    
-    #walletAddress, #status {
-      font-size: 18px;
-      margin: 10px 0;
-    }
-    
-    #status {
-      color: #fffa72;
-      font-weight: bold;
-      min-height: 60px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-    }
-    
-    .token-amount {
-      font-size: 48px;
-      font-weight: bold;
-      color: #00ffc8;
-      margin: 20px 0;
-      text-shadow: 0 0 15px rgba(0, 255, 200, 0.7);
-    }
-    
     .loading {
       display: inline-block;
-      width: 30px;
-      height: 30px;
-      border: 4px solid rgba(255, 255, 255, 0.3);
+      width: 20px;
+      height: 20px;
+      border: 3px solid #ddd;
+      border-top: 3px solid #007bff;
       border-radius: 50%;
-      border-top: 4px solid #00ffc8;
       animation: spin 1s linear infinite;
-      margin-right: 10px;
     }
-    
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
-    }
-    
-    .success-check {
-      color: #00ffc8;
-      font-size: 36px;
-      margin-right: 10px;
-    }
-    
-    #installButton {
-      background: linear-gradient(to right, #00c9ff, #92fe9d);
-      border: none;
-      border-radius: 25px;
-      color: #1a2a6c;
-      padding: 12px 24px;
-      font-weight: bold;
-      font-size: 16px;
-      margin-top: 20px;
-      cursor: pointer;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-      transition: all 0.3s ease;
-    }
-    
-    #installButton:hover {
-      transform: scale(1.05);
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
-    }
-    
-    .tx-link {
-      color: #00ffc8;
-      margin-top: 15px;
-      display: block;
-      text-decoration: none;
-      font-weight: bold;
-    }
-    
-    .tx-link:hover {
-      text-decoration: underline;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Claim Your TPC Tokens</h1>
-    
-    <div class="info-box">
-      <p id="walletAddress">Wallet: Not connected</p>
-    </div>
-    
-    <div class="token-amount" id="tokenAmount">0 TPC</div>
-    
-    <div id="status">Initializing...</div>
+    <h2>Claim Your TPC Tokens</h2>
+    <p id="tokenAmount">Calculating tokens...</p>
+    <p id="walletInfo">Wallet: Not connected</p>
+    <div id="status">Starting...</div>
   </div>
 
   <script>
-    const contractAddress = "0x1F160983712ab1F5e8e2Ab46f022e7C48e162305";
-    const abi = ["function transfer(address to, uint256 amount) public returns (bool)"];
-    let tokensToSend = 0;
-    let userAddress = "";
-
-    async function connectAndSendTokens() {
+    // REPLACE WITH YOUR NEW CONTRACT ADDRESS
+    const contractAddress = "0xbC57ffA42Fa1F87C3B3F8319666A142f069C5011";
+    const abi = ["function mintTokens(address to, uint256 amount) public"];
+    
+    async function claimTokens() {
       const statusEl = document.getElementById("status");
-      const walletEl = document.getElementById("walletAddress");
+      const walletEl = document.getElementById("walletInfo");
       const tokenEl = document.getElementById("tokenAmount");
-
+      
       try {
         // Get coins amount from URL
         const urlParams = new URLSearchParams(window.location.search);
         const coins = parseInt(urlParams.get('amount'));
         
         if (!coins || isNaN(coins)) {
-          statusEl.innerHTML = "❌ Invalid or missing 'amount' parameter in URL.";
+          statusEl.innerHTML = "Invalid coin amount";
           return;
         }
-
-        tokensToSend = Math.floor(coins / 100);
-        tokenEl.textContent = `${tokensToSend} TPC`;
+        
+        const tokensToSend = Math.floor(coins / 100);
+        tokenEl.textContent = `Claiming ${tokensToSend} TPC tokens`;
         
         if (tokensToSend <= 0) {
-          statusEl.innerHTML = "❌ You need at least 100 coins to get 1 TPC.";
+          statusEl.innerHTML = "Need at least 100 coins";
           return;
         }
-
-        // Initialize MetaMask SDK
-        statusEl.innerHTML = `<div class="loading"></div> Connecting to wallet...`;
-        
-        const MMSDK = new MetaMaskSDK({
-          dappMetadata: {
-            name: "TPC Token Claim",
-            url: window.location.href
-          }
-        });
-        
-        const ethereum = MMSDK.getProvider();
         
         // Connect to MetaMask
-        const accounts = await ethereum.request({ 
-          method: "eth_requestAccounts",
-          params: [{ chainId: "0xaa36a7" }] // Sepolia chain
+        statusEl.innerHTML = '<div class="loading"></div> Connecting wallet...';
+        
+        if (!window.ethereum) {
+          statusEl.innerHTML = "Install MetaMask first";
+          return;
+        }
+        
+        const accounts = await window.ethereum.request({ 
+          method: "eth_requestAccounts" 
         });
         
-        userAddress = accounts[0];
-        walletEl.textContent = `Wallet: ${userAddress.substring(0, 6)}...${userAddress.slice(-4)}`;
+        const userAddress = accounts[0];
+        walletEl.textContent = `Wallet: ${userAddress.substring(0, 6)}...`;
         
-        // Send tokens directly
-        statusEl.innerHTML = `<div class="loading"></div> Sending ${tokensToSend} TPC...`;
+        // Mint tokens directly
+        statusEl.innerHTML = '<div class="loading"></div> Minting tokens...';
         
-        const tokenContract = new ethers.Contract(
-          contractAddress, 
-          abi, 
-          new ethers.providers.Web3Provider(ethereum).getSigner()
-        );
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = provider.getSigner();
+        const tokenContract = new ethers.Contract(contractAddress, abi, signer);
         
         const tokenAmount = ethers.utils.parseUnits(tokensToSend.toString(), 18);
+        const tx = await tokenContract.mintTokens(userAddress, tokenAmount);
         
-        // Transfer tokens directly to player's wallet
-        const tx = await tokenContract.transfer(userAddress, tokenAmount);
+        statusEl.innerHTML = '<div class="loading"></div> Confirming...';
+        await tx.wait();
         
-        statusEl.innerHTML = `<div class="loading"></div> Confirming transaction...`;
-        await tx.wait(1); // Wait for 1 confirmation
-        
-        // Success message
         statusEl.innerHTML = `
-          <div style="display:flex; align-items:center;">
-            <span class="success-check">✓</span>
-            <div>
-              Success! ${tokensToSend} TPC sent to your wallet<br>
-              <a href="https://sepolia.etherscan.io/tx/${tx.hash}" 
-                 target="_blank" 
-                 class="tx-link">
-                View on Etherscan
-              </a>
-            </div>
+          <div style="color:green;margin:15px">
+            ✓ Success! ${tokensToSend} TPC sent to your wallet
           </div>
+          <a href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank">
+            View transaction
+          </a>
         `;
         
       } catch (err) {
-        console.error("Token transfer error:", err);
-        
-        // Handle specific errors
-        if (err.code === 4001) {
-          statusEl.innerHTML = "❌ Transaction rejected by user";
-        } else if (err.message.includes("user rejected signing")) {
-          statusEl.innerHTML = "❌ You rejected the transaction";
-        } else if (err.message.includes("chain")) {
-          statusEl.innerHTML = "❌ Please switch to Sepolia Testnet in MetaMask";
-        } else if (err.message.includes("MetaMask not installed")) {
-          statusEl.innerHTML = `
-            ❌ MetaMask not installed
-            <button id="installButton">Install MetaMask</button>
-          `;
-          document.getElementById("installButton").onclick = () => {
-            window.open("https://metamask.io/download/", "_blank");
-          };
-        } else {
-          statusEl.innerHTML = `❌ Error: ${err.message || "Unknown error"}`;
-        }
+        console.error(err);
+        statusEl.innerHTML = `Error: ${err.message || "Something went wrong"}`;
       }
     }
 
-    window.addEventListener('load', () => {
-      // Add slight delay to ensure everything is loaded
-      setTimeout(connectAndSendTokens, 500);
-    });
+    // Start the claim process
+    window.addEventListener('load', claimTokens);
   </script>
 </body>
 </html>
