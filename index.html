@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <title>Claim TPC Tokens</title>
-  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -68,20 +67,6 @@
       font-size: 18px;
       min-height: 60px;
     }
-    .loading {
-      display: inline-block;
-      width: 30px;
-      height: 30px;
-      border: 4px solid rgba(255,255,255,0.3);
-      border-top: 4px solid #00ffc8;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-right: 10px;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
     .success {
       color: #00ffc8;
       font-weight: bold;
@@ -95,6 +80,13 @@
       margin-left: 10px;
       cursor: pointer;
     }
+    .qr-code {
+      margin: 20px auto;
+      width: 200px;
+      height: 200px;
+      background: white;
+      padding: 10px;
+    }
   </style>
 </head>
 <body>
@@ -107,27 +99,31 @@
       Claim: <span id="tokensAmount">0</span> TPC tokens
     </div>
     
-    <button id="actionButton" class="action-button">
-      Connect Wallet
+    <button id="sendButton" class="action-button">
+      Open in MetaMask
     </button>
     
     <div class="instructions">
-      <p>If you have issues:</p>
+      <p>Complete these steps if MetaMask doesn't open:</p>
       <div class="step">1. Copy contract address: 
         <span id="contractAddress">0x1F160...62305</span>
         <button id="copyButton" class="copy-btn">Copy</button>
       </div>
       <div class="step">2. Open MetaMask manually</div>
-      <div class="step">3. Go to "Import Token" and paste the address</div>
+      <div class="step">3. Go to "Send" → "Import Token" → Paste address</div>
     </div>
     
     <div id="status"></div>
+    
+    <div class="qr-code" id="qrCode">
+      <!-- QR code will be generated here -->
+      <p>Scan to open in MetaMask</p>
+    </div>
   </div>
 
   <script>
     // Contract details
     const contractAddress = "0x1F160983712ab1F5e8e2Ab46f022e7C48e162305";
-    const abi = ["function mintTokens(address to, uint256 amount) public"];
     let tokensToSend = 0;
     let userAddress = null;
     
@@ -153,74 +149,51 @@
           });
       });
       
+      // Generate QR code for mobile users
+      generateQRCode();
+      
       // Main action button
-      document.getElementById('actionButton').addEventListener('click', async () => {
-        const statusEl = document.getElementById('status');
-        const button = document.getElementById('actionButton');
-        
-        if (!window.ethereum) {
-          statusEl.innerHTML = "MetaMask not detected. Please install it first.";
+      document.getElementById('sendButton').addEventListener('click', () => {
+        if (tokensToSend <= 0) {
+          document.getElementById('status').innerHTML = 
+            "<span style='color:#ff5555'>You need at least 100 coins to claim tokens</span>";
           return;
         }
         
-        try {
-          // Step 1: Connect Wallet
-          statusEl.innerHTML = "<span class='loading'></span> Connecting to wallet...";
-          button.disabled = true;
-          
-          const accounts = await window.ethereum.request({ 
-            method: "eth_requestAccounts" 
-          });
-          userAddress = accounts[0];
-          
-          // Step 2: Send Tokens
-          statusEl.innerHTML = "<span class='loading'></span> Preparing transaction...";
-          
-          const provider = new ethers.providers.Web3Provider(window.ethereum);
-          const signer = provider.getSigner();
-          const tokenContract = new ethers.Contract(contractAddress, abi, signer);
-          
-          const tokenAmount = ethers.utils.parseUnits(tokensToSend.toString(), 18);
-          const tx = await tokenContract.mintTokens(userAddress, tokenAmount);
-          
-          statusEl.innerHTML = "<span class='loading'></span> Waiting for confirmation...";
-          await tx.wait();
-          
-          statusEl.innerHTML = `
-            <div class="success">
-              ✓ Success! ${tokensToSend} TPC tokens sent to your wallet.<br>
-              <a href="https://sepolia.etherscan.io/tx/${tx.hash}" 
-                 target="_blank" 
-                 style="color:#00ffc8;margin-top:10px;display:inline-block;">
-                View on Etherscan
-              </a>
-            </div>
-          `;
-          button.textContent = "Tokens Sent!";
-          
-        } catch (error) {
-          console.error(error);
-          let errorMessage = error.message || "Transaction failed";
-          
-          if (error.code === 4001) {
-            errorMessage = "You rejected the transaction";
-          } else if (error.message.includes("chain")) {
-            errorMessage = "Please switch to Sepolia Testnet in MetaMask";
-          }
-          
-          statusEl.innerHTML = `❌ ${errorMessage}`;
-          button.disabled = false;
-          button.textContent = "Try Again";
-        }
+        // Convert tokens to wei (18 decimals)
+        const tokenAmountWei = (tokensToSend * 10 ** 18).toString();
+        
+        // Create MetaMask deep link
+        const deeplink = `https://metamask.app.link/send/${contractAddress}@11155111/transfer?address=${contractAddress}&uint256=${tokenAmountWei}`;
+        
+        // Try to open MetaMask
+        window.location.href = deeplink;
+        
+        // Show fallback instructions
+        document.getElementById('status').innerHTML = `
+          <span style="color:#fffa72">
+            If MetaMask didn't open automatically:<br>
+            1. Make sure MetaMask is installed<br>
+            2. <a href="${deeplink}" style="color:#00ffc8;">Click here to try again</a>
+          </span>
+        `;
       });
-      
-      // Try to connect automatically
-      setTimeout(() => {
-        if (window.ethereum && window.ethereum.isMetaMask) {
-          document.getElementById('actionButton').click();
-        }
-      }, 1000);
     });
+    
+    // Generate QR code function
+    function generateQRCode() {
+      const coins = new URLSearchParams(window.location.search).get('amount') || '0';
+      const deeplink = `https://metamask.app.link/dapp/hammasmalik126.github.io/TPCdApp/?amount=${coins}`;
+      
+      // Create QR code
+      const qrDiv = document.getElementById('qrCode');
+      qrDiv.innerHTML = `
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(deeplink)}" 
+             alt="Scan QR Code"
+             style="width:100%;height:100%">
+        <p style="margin-top:10px;color:black;">Scan to open in MetaMask</p>
+      `;
+    }
   </script>
 </body>
 </html>
