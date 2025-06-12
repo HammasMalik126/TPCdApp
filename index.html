@@ -41,7 +41,6 @@
       margin: 15px 5px;
       cursor: pointer;
       box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-      display: inline-block;
     }
     .action-button:hover {
       transform: scale(1.05);
@@ -68,9 +67,6 @@
       margin-top: 20px;
       font-size: 18px;
       min-height: 60px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
     }
     .loading {
       display: inline-block;
@@ -90,6 +86,15 @@
       color: #00ffc8;
       font-weight: bold;
     }
+    .copy-btn {
+      background: #555;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 5px;
+      margin-left: 10px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -102,129 +107,119 @@
       Claim: <span id="tokensAmount">0</span> TPC tokens
     </div>
     
-    <button id="connectButton" class="action-button">
+    <button id="actionButton" class="action-button">
       Connect Wallet
-    </button>
-    <button id="sendButton" class="action-button" style="display:none; background:#ff9800;">
-      Send Tokens
     </button>
     
     <div class="instructions">
       <p>If you have issues:</p>
       <div class="step">1. Copy contract address: 
         <span id="contractAddress">0x1F160...62305</span>
-        <button id="copyButton" class="action-button" style="padding:5px 10px;font-size:14px;margin-left:10px;">Copy</button>
+        <button id="copyButton" class="copy-btn">Copy</button>
       </div>
       <div class="step">2. Open MetaMask manually</div>
-      <div class="step">3. Paste address and send tokens</div>
+      <div class="step">3. Go to "Import Token" and paste the address</div>
     </div>
     
     <div id="status"></div>
   </div>
 
   <script>
-    // Your contract address
+    // Contract details
     const contractAddress = "0x1F160983712ab1F5e8e2Ab46f022e7C48e162305";
     const abi = ["function mintTokens(address to, uint256 amount) public"];
     let tokensToSend = 0;
     let userAddress = null;
     
+    // Initialize page
     document.addEventListener('DOMContentLoaded', () => {
       const urlParams = new URLSearchParams(window.location.search);
       const coins = parseInt(urlParams.get('amount') || '0');
-      const coinsEl = document.getElementById('coinsAmount');
-      const tokensEl = document.getElementById('tokensAmount');
-      const connectButton = document.getElementById('connectButton');
-      const sendButton = document.getElementById('sendButton');
-      const copyButton = document.getElementById('copyButton');
-      const contractEl = document.getElementById('contractAddress');
-      const statusEl = document.getElementById('status');
-      
-      // Display values
-      coinsEl.textContent = coins;
+      document.getElementById('coinsAmount').textContent = coins;
       tokensToSend = Math.floor(coins / 100);
-      tokensEl.textContent = tokensToSend;
-      contractEl.textContent = `${contractAddress.substring(0, 6)}...${contractAddress.substring(contractAddress.length-5)}`;
+      document.getElementById('tokensAmount').textContent = tokensToSend;
+      document.getElementById('contractAddress').textContent = 
+        `${contractAddress.substring(0, 6)}...${contractAddress.substring(contractAddress.length-5)}`;
       
-      // Copy to clipboard function
-      copyButton.addEventListener('click', () => {
+      // Copy button functionality
+      document.getElementById('copyButton').addEventListener('click', () => {
         navigator.clipboard.writeText(contractAddress)
           .then(() => {
-            statusEl.innerHTML = "<span class='success'>✓ Address copied to clipboard!</span>";
+            document.getElementById('status').innerHTML = 
+              "<span class='success'>✓ Contract address copied!</span>";
           })
           .catch(err => {
-            statusEl.innerHTML = "Failed to copy: " + err;
+            document.getElementById('status').textContent = "Failed to copy: " + err;
           });
       });
       
-      // Connect to wallet
-      connectButton.addEventListener('click', async () => {
+      // Main action button
+      document.getElementById('actionButton').addEventListener('click', async () => {
+        const statusEl = document.getElementById('status');
+        const button = document.getElementById('actionButton');
+        
         if (!window.ethereum) {
-          statusEl.innerHTML = "MetaMask not installed!";
+          statusEl.innerHTML = "MetaMask not detected. Please install it first.";
           return;
         }
         
-        statusEl.innerHTML = "<span class='loading'></span> Connecting...";
-        
         try {
+          // Step 1: Connect Wallet
+          statusEl.innerHTML = "<span class='loading'></span> Connecting to wallet...";
+          button.disabled = true;
+          
           const accounts = await window.ethereum.request({ 
             method: "eth_requestAccounts" 
           });
-          
           userAddress = accounts[0];
-          statusEl.innerHTML = `<span class='success'>✓ Connected! Wallet: ${userAddress.substring(0, 6)}...${userAddress.slice(-4)}</span>`;
           
-          // Show send button
-          connectButton.style.display = "none";
-          sendButton.style.display = "inline-block";
+          // Step 2: Send Tokens
+          statusEl.innerHTML = "<span class='loading'></span> Preparing transaction...";
           
-        } catch (err) {
-          console.error(err);
-          statusEl.innerHTML = `Connection failed: ${err.message}`;
-        }
-      });
-      
-      // Send tokens
-      sendButton.addEventListener('click', async () => {
-        if (!userAddress || tokensToSend <= 0) return;
-        
-        statusEl.innerHTML = "<span class='loading'></span> Sending tokens...";
-        
-        try {
-          // Create provider and signer
           const provider = new ethers.providers.Web3Provider(window.ethereum);
           const signer = provider.getSigner();
-          
-          // Create contract instance
           const tokenContract = new ethers.Contract(contractAddress, abi, signer);
           
-          // Convert tokens to wei (18 decimals)
           const tokenAmount = ethers.utils.parseUnits(tokensToSend.toString(), 18);
-          
-          // Send transaction
           const tx = await tokenContract.mintTokens(userAddress, tokenAmount);
           
           statusEl.innerHTML = "<span class='loading'></span> Waiting for confirmation...";
-          
-          // Wait for transaction to be mined
           await tx.wait();
           
           statusEl.innerHTML = `
             <div class="success">
-              ✓ ${tokensToSend} TPC tokens sent to your wallet!<br>
+              ✓ Success! ${tokensToSend} TPC tokens sent to your wallet.<br>
               <a href="https://sepolia.etherscan.io/tx/${tx.hash}" 
                  target="_blank" 
-                 style="color:#00ffc8;margin-top:10px;display:block;">
+                 style="color:#00ffc8;margin-top:10px;display:inline-block;">
                 View on Etherscan
               </a>
             </div>
           `;
+          button.textContent = "Tokens Sent!";
           
-        } catch (err) {
-          console.error(err);
-          statusEl.innerHTML = `Error: ${err.message || "Transaction failed"}`;
+        } catch (error) {
+          console.error(error);
+          let errorMessage = error.message || "Transaction failed";
+          
+          if (error.code === 4001) {
+            errorMessage = "You rejected the transaction";
+          } else if (error.message.includes("chain")) {
+            errorMessage = "Please switch to Sepolia Testnet in MetaMask";
+          }
+          
+          statusEl.innerHTML = `❌ ${errorMessage}`;
+          button.disabled = false;
+          button.textContent = "Try Again";
         }
       });
+      
+      // Try to connect automatically
+      setTimeout(() => {
+        if (window.ethereum && window.ethereum.isMetaMask) {
+          document.getElementById('actionButton').click();
+        }
+      }, 1000);
     });
   </script>
 </body>
