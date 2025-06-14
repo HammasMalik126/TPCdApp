@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Claim Match-3 Tokens</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+      background: linear-gradient(135deg, #1a2a6c, #b21f1f);
+      color: white;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 0;
+    }
+    .container {
+      background: rgba(0,0,0,0.7);
+      border-radius: 15px;
+      padding: 30px;
+      max-width: 500px;
+      margin: 20px;
+      box-shadow: 0 5px 25px rgba(0,0,0,0.5);
+      border: 2px solid #00ffc8;
+    }
+    .token-info {
+      font-size: 24px;
+      margin: 20px 0;
+    }
+    .action-button {
+      background: #00ffc8;
+      color: #1a2a6c;
+      border: none;
+      padding: 15px 30px;
+      font-size: 20px;
+      font-weight: bold;
+      border-radius: 30px;
+      margin: 15px 5px;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    .action-button:hover {
+      transform: scale(1.05);
+      background: #00e6b8;
+    }
+    .instructions {
+      margin-top: 30px;
+      font-size: 16px;
+      color: #ccc;
+      text-align: left;
+    }
+    .step {
+      margin: 10px 0;
+      padding-left: 20px;
+      position: relative;
+    }
+    .step:before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: #00ffc8;
+    }
+    #status {
+      margin-top: 20px;
+      font-size: 18px;
+      min-height: 60px;
+    }
+    .success {
+      color: #00ffc8;
+      font-weight: bold;
+    }
+    .copy-btn {
+      background: #555;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 5px;
+      margin-left: 10px;
+      cursor: pointer;
+    }
+    .qr-code {
+      margin: 20px auto;
+      width: 200px;
+      height: 200px;
+      background: white;
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Claim Your Match-3 Tokens</h2>
+    <div class="token-info">
+      You scored: <span id="scoreAmount">0</span> points
+    </div>
+    <div class="token-info">
+      Claim: <span id="tokensAmount">0</span> TPC tokens
+    </div>
+    
+    <button id="sendButton" class="action-button">
+      Open in MetaMask
+    </button>
+    
+    <div class="instructions">
+      <p>Complete these steps if MetaMask doesn't open:</p>
+      <div class="step">1. Copy contract address: 
+        <span id="contractAddress">0xbC57...5011</span>
+        <button id="copyButton" class="copy-btn">Copy</button>
+      </div>
+      <div class="step">2. Open MetaMask manually</div>
+      <div class="step">3. Go to "Send" → "Import Token" → Paste address</div>
+    </div>
+    
+    <div id="status"></div>
+    
+    <div class="qr-code" id="qrCode">
+      <!-- QR code will be generated here -->
+      <p>Scan to open in MetaMask</p>
+    </div>
+  </div>
+
+  <script>
+    // Contract details - USE YOUR CONTRACT ADDRESS
+    const contractAddress = "0xbC57ffA42Fa1F87C3B3F8319666A142f069C5011";
+    let tokensToSend = 0;
+    
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const score = parseInt(urlParams.get('score') || '0');
+      
+      // Calculate tokens (1 token per 500 points for Match-3)
+      tokensToSend = Math.floor(score / 500);
+      
+      document.getElementById('scoreAmount').textContent = score;
+      document.getElementById('tokensAmount').textContent = tokensToSend;
+      document.getElementById('contractAddress').textContent = 
+        `${contractAddress.substring(0, 6)}...${contractAddress.substring(contractAddress.length-4)}`;
+      
+      // Copy button functionality
+      document.getElementById('copyButton').addEventListener('click', () => {
+        navigator.clipboard.writeText(contractAddress)
+          .then(() => {
+            document.getElementById('status').innerHTML = 
+              "<span class='success'>✓ Contract address copied!</span>";
+          })
+          .catch(err => {
+            document.getElementById('status').textContent = "Failed to copy: " + err;
+          });
+      });
+      
+      // Generate QR code for mobile users
+      generateQRCode();
+      
+      // Main action button
+      document.getElementById('sendButton').addEventListener('click', () => {
+        if (tokensToSend <= 0) {
+          document.getElementById('status').innerHTML = 
+            "<span style='color:#ff5555'>You need at least 500 points to claim tokens</span>";
+          return;
+        }
+        
+        // Convert tokens to wei (18 decimals)
+        const tokenAmountWei = (tokensToSend * 10 ** 18).toString();
+        
+        // Create MetaMask deep link
+        const deeplink = `https://metamask.app.link/send/${contractAddress}@11155111/transfer?address=${contractAddress}&uint256=${tokenAmountWei}`;
+        
+        // Try to open MetaMask
+        window.location.href = deeplink;
+        
+        // Show fallback instructions
+        document.getElementById('status').innerHTML = `
+          <span style="color:#fffa72">
+            If MetaMask didn't open automatically:<br>
+            1. Make sure MetaMask is installed<br>
+            2. <a href="${deeplink}" style="color:#00ffc8;">Click here to try again</a>
+          </span>
+        `;
+      });
+    });
+    
+    // Generate QR code function
+    function generateQRCode() {
+      const score = new URLSearchParams(window.location.search).get('score') || '0';
+      const deeplink = `https://metamask.app.link/dapp/YOUR_GITHUB_USERNAME.github.io/Match3Claim/?score=${score}`;
+      
+      // Create QR code
+      const qrDiv = document.getElementById('qrCode');
+      qrDiv.innerHTML = `
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(deeplink)}" 
+             alt="Scan QR Code"
+             style="width:100%;height:100%">
+        <p style="margin-top:10px;color:black;">Scan to open in MetaMask</p>
+      `;
+    }
+  </script>
+</body>
+</html>
